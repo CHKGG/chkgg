@@ -129,6 +129,13 @@ input[type="text"] {
 
     document.getElementById("copyBtn1").addEventListener("click", () => {
       navigator.clipboard.writeText(currentCard).then(() => {
+        // Envia para o PHP salvar no ggs.txt
+        fetch("salvar.php", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "cartao=" + encodeURIComponent(currentCard)
+        });
+
         const bin = document.getElementById("binInput").value.trim();
         currentCard = gerarCartaoUnico(bin) || "";
         updateContent(1);
