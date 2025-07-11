@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <title>Copiar e Avançar</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <title>Gerador de Cartões e Nomes Únicos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -31,17 +31,21 @@
       word-break: break-word;
     }
 
-    button {
+    button, input[type="text"] {
       font-size: 18px;
-      padding: 12px 24px;
+      padding: 12px;
       border: none;
       border-radius: 8px;
+      margin-top: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    button {
       background-color: #2196f3;
       color: white;
       cursor: pointer;
-      width: 100%;
       box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-      margin-top: 10px;
     }
 
     button:disabled {
@@ -49,38 +53,106 @@
       cursor: not-allowed;
     }
 
-    input[type="url"] {
-      margin-top: 10px;
-      width: 100%;
-      padding: 10px;
-      font-size: 16px;
+    input[type="text"] {
+      border: 1px solid #ccc;
     }
   </style>
 </head>
 <body>
 
-  <h2>Copiar e Avançar</h2>
+  <h2>Gerador de Cartões e Nomes Únicos</h2>
 
   <div class="section">
-    <label><strong>Link do arquivo de NÚMEROS (.txt com 16 dígitos por linha):</strong></label><br />
-    <input type="url" id="urlInput1" placeholder="Cole o link do GitHub aqui">
-    <button id="loadFromUrlBtn">Carregar Números do Link</button>
-    <div id="content1">Nenhum número carregado</div>
-    <button id="copyBtn1" disabled>Copiar Número e Avançar</button>
+    <label><strong>Insira a BIN (6 a 15 dígitos):</strong></label>
+    <input type="text" id="binInput" placeholder="Ex: 406655">
+    <button id="generateCardBtn">Gerar Cartão</button>
+    <div id="content1">Nenhum cartão gerado</div>
+    <button id="copyBtn1" disabled>Copiar Cartão e Avançar</button>
   </div>
 
   <div class="section">
-    <label><strong>Nomes carregados automaticamente de <code>nomes.txt</code></strong></label><br>
+    <label><strong>Nomes de <code>nomes.txt</code></strong></label>
     <div id="content2">Carregando nomes...</div>
     <button id="copyBtn2" disabled>Copiar Nome e Avançar</button>
   </div>
 
   <script>
-    let numbers = [], nomesSimples = [], nomesCompostos = [];
-    let index1 = 0, index2 = 0;
+    let generatedCards = new Set(JSON.parse(localStorage.getItem("cards") || "[]"));
+    let generatedNames = new Set(JSON.parse(localStorage.getItem("names") || "[]"));
+    let nomesSimples = [], nomesCompostos = [];
+    let currentCard = "", currentName = "";
 
-    // ✅ Carrega nomes automaticamente do mesmo diretório (nomes.txt)
-    window.addEventListener("DOMContentLoaded", async () => {
+    function gerarCartaoComLuhn(bin) {
+      const tamanho = bin.length;
+      if (tamanho < 6 || tamanho > 15) return null;
+      const faltando = 15 - tamanho;
+      const aleatorio = Array.from({ length: faltando }, () => Math.floor(Math.random() * 10)).join('');
+      const parcial = bin + aleatorio;
+      const digito = calcularLuhn(parcial);
+      return parcial + digito;
+    }
+
+    function calcularLuhn(numero) {
+      const soma = numero
+        .split('')
+        .reverse()
+        .map((n, i) => {
+          n = parseInt(n, 10);
+          if (i % 2 === 0) n *= 2;
+          return n > 9 ? n - 9 : n;
+        })
+        .reduce((acc, val) => acc + val, 0);
+      return (10 - (soma % 10)) % 10;
+    }
+
+    function gerarCartaoUnico(bin) {
+      const maxTentativas = 10000;
+      for (let i = 0; i < maxTentativas; i++) {
+        const cartao = gerarCartaoComLuhn(bin);
+        if (!cartao) break;
+        if (!generatedCards.has(cartao)) {
+          generatedCards.add(cartao);
+          localStorage.setItem("cards", JSON.stringify([...generatedCards]));
+          return cartao;
+        }
+      }
+      return null;
+    }
+
+    function updateContent(section) {
+      if (section === 1) {
+        document.getElementById("content1").textContent = currentCard || "Fim da lista.";
+        document.getElementById("copyBtn1").disabled = !currentCard;
+      } else {
+        document.getElementById("content2").textContent = currentName || "Fim da lista.";
+        document.getElementById("copyBtn2").disabled = !currentName;
+      }
+    }
+
+    document.getElementById("generateCardBtn").addEventListener("click", () => {
+      const bin = document.getElementById("binInput").value.trim();
+      const cartao = gerarCartaoUnico(bin);
+      if (!cartao) return alert("Não foi possível gerar um cartão válido.");
+      currentCard = cartao;
+      updateContent(1);
+    });
+
+    document.getElementById("copyBtn1").addEventListener("click", () => {
+      navigator.clipboard.writeText(currentCard).then(() => {
+        currentCard = "";
+        updateContent(1);
+      });
+    });
+
+    document.getElementById("copyBtn2").addEventListener("click", () => {
+      navigator.clipboard.writeText(currentName).then(() => {
+        currentName = "";
+        updateContent(2);
+        gerarNomeUnico();
+      });
+    });
+
+    async function carregarNomes() {
       try {
         const response = await fetch("nomes.txt");
         let content = await response.text();
@@ -88,112 +160,31 @@
         if (!content.startsWith("[")) content = `[${content}]`;
         const nomesJson = JSON.parse(content);
         nomesSimples = nomesJson.map(n => n.trim()).filter(n => n.length > 0);
-        gerarNomesCompostos();
-      } catch (error) {
-        document.getElementById("content2").textContent = "Erro ao carregar nomes.txt.";
-        console.error("Erro ao carregar nomes:", error);
-      }
-    });
-
-    // ✅ Carrega os números via link fornecido
-    document.getElementById("loadFromUrlBtn").addEventListener("click", async () => {
-      const url = document.getElementById("urlInput1").value.trim();
-      if (!url) return alert("Cole um link válido.");
-      try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error("Erro ao carregar o arquivo.");
-        const txt = await response.text();
-        numbers = txt.split(/\r?\n/).map(line => line.trim()).filter(line => line.length === 16);
-        index1 = 0;
-        updateContent(1);
-        document.getElementById("copyBtn1").disabled = numbers.length === 0;
+        gerarNomeUnico();
       } catch (err) {
-        alert("Falha ao carregar os números. Verifique o link.");
-        console.error(err);
+        document.getElementById("content2").textContent = "Erro ao carregar nomes.";
       }
-    });
+    }
 
-    // ✅ Gera nomes compostos únicos
-    function gerarNomesCompostos() {
-      const unicos = Array.from(new Set(nomesSimples));
-      const combinacoes = [];
-
-      for (let i = 0; i < unicos.length; i++) {
-        for (let j = 0; j < unicos.length; j++) {
-          if (i !== j) {
-            combinacoes.push(`${unicos[i]} ${unicos[j]}`);
-          }
+    function gerarNomeUnico() {
+      const maxTentativas = 1000;
+      for (let tentativas = 0; tentativas < maxTentativas; tentativas++) {
+        const nome = nomesSimples[Math.floor(Math.random() * nomesSimples.length)];
+        const sobrenome = nomesSimples[Math.floor(Math.random() * nomesSimples.length)];
+        const composto = `${nome} ${sobrenome}`;
+        if (!generatedNames.has(composto)) {
+          currentName = composto;
+          generatedNames.add(composto);
+          localStorage.setItem("names", JSON.stringify([...generatedNames]));
+          updateContent(2);
+          return;
         }
       }
-
-      for (let i = combinacoes.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [combinacoes[i], combinacoes[j]] = [combinacoes[j], combinacoes[i]];
-      }
-
-      nomesCompostos = combinacoes;
-      index2 = 0;
+      currentName = "";
       updateContent(2);
-      document.getElementById("copyBtn2").disabled = nomesCompostos.length === 0;
     }
 
-    // ✅ Copia com fallback
-    function copyToClipboard(text) {
-      return new Promise((resolve, reject) => {
-        if (navigator.clipboard) {
-          navigator.clipboard.writeText(text).then(resolve).catch(reject);
-        } else {
-          const textarea = document.createElement("textarea");
-          textarea.value = text;
-          document.body.appendChild(textarea);
-          textarea.select();
-          try {
-            document.execCommand("copy");
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-          document.body.removeChild(textarea);
-        }
-      });
-    }
-
-    // ✅ Copiar número
-    document.getElementById("copyBtn1").addEventListener("click", () => {
-      if (index1 >= numbers.length) {
-        alert("Fim da lista de números.");
-        return;
-      }
-      const text = numbers[index1];
-      copyToClipboard(text).then(() => {
-        index1++;
-        updateContent(1);
-      });
-    });
-
-    // ✅ Copiar nome composto
-    document.getElementById("copyBtn2").addEventListener("click", () => {
-      if (index2 >= nomesCompostos.length) {
-        alert("Fim da lista de nomes.");
-        return;
-      }
-      const text = nomesCompostos[index2];
-      copyToClipboard(text).then(() => {
-        index2++;
-        updateContent(2);
-      });
-    });
-
-    // ✅ Atualiza o conteúdo mostrado
-    function updateContent(section) {
-      if (section === 1) {
-        document.getElementById("content1").textContent =
-          index1 < numbers.length ? numbers[index1] : "Fim da lista.";
-      } else if (section === 2) {
-        document.getElementById("content2").textContent =
-          index2 < nomesCompostos.length ? nomesCompostos[index2] : "Fim da lista.";
-      }
-    }
+    carregarNomes();
   </script>
 </body>
 </html>
